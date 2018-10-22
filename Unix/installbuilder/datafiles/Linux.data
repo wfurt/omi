@@ -185,6 +185,10 @@ ConfigureOmiService() {
 
           # initctl registers it with upstart
           initctl reload-configuration
+      elif [ -x /bin/systemctl ]; then
+          cp /opt/omi/bin/support/omid.systemd ${SYSTEMD_UNIT_DIR}/omid.service
+          /bin/systemctl daemon-reload
+          /bin/systemctl enable omid
       else
           cp /opt/omi/bin/support/omid.initd /etc/init.d/omid
 
