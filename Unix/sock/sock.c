@@ -54,6 +54,7 @@
 #endif
 
 #define MINSOCKBUFSIZE 4096
+#define MAXSOCKBUFSIZE 52428800
 
 /*
 **==============================================================================
@@ -113,12 +114,25 @@ MI_INLINE int _Write(Sock sock, const void* data, size_t size)
 
 MI_INLINE int _ReadV(Sock sock, const IOVec* iov, size_t  iovcnt)
 {
-    return readv(sock, (struct iovec*)iov, iovcnt);
+    int n = readv(sock, (struct iovec*)iov, iovcnt);
+    if (n < 0)
+    {
+        if (errno == EAGAIN)
+            LOGD2((ZT("_ReadV - read failed with EAGAIN. socket: %d"), sock));
+        else
+            LOGE2((ZT("_ReadV - read failed. socket: %d, errno: %d (%s)"), sock, errno, strerror(errno)));
+    }
+    return n;
 }
 
 MI_INLINE int _WriteV(Sock sock, const IOVec* iov, size_t  iovcnt)
 {
-    return writev(sock, (struct iovec*)iov, iovcnt);
+    int n = writev(sock, (struct iovec*)iov, iovcnt);
+    if (n < 0)
+    {
+        LOGE2((ZT("_WriteV - write failed. socket: %d, errno: %d (%s)"), sock, errno, strerror(errno)));
+    }
+    return n;
 }
 
 /*
@@ -348,6 +362,11 @@ MI_Result Sock_Read(
 
         if (n >= 0)
         {
+            if(n > MAXSOCKBUFSIZE)
+            {
+                LOGD2((ZT("Sock_Read - failed: To large %d bytes read"), n));
+                return MI_RESULT_FAILED;
+            }
             *sizeRead = n;
             LOGD2((ZT("Sock_Read - OK exit. %d bytes read"), n));
             return MI_RESULT_OK;
@@ -396,6 +415,12 @@ MI_Result Sock_Write(
 
         if (n >= 0)
         {
+            if(n > MAXSOCKBUFSIZE)
+            {
+                LOGD2((ZT("Sock_Write - failed: To large %d bytes written"), n));
+                return MI_RESULT_FAILED;
+            }
+            
             *sizeWritten = (size_t)n;
             LOGD2((ZT("Sock_Write - OK exit. %d bytes written"), n));
             return MI_RESULT_OK;
@@ -449,6 +474,12 @@ MI_Result Sock_ReadV(
 
         if (n >= 0)
         {
+            if(n > MAXSOCKBUFSIZE)
+            {
+                LOGD2((ZT("Sock_ReadV - failed: To large %d bytes read"), n));
+                return MI_RESULT_FAILED;
+            }
+            
             *sizeRead = n;
             return MI_RESULT_OK;
         }
@@ -486,6 +517,12 @@ MI_Result Sock_WriteV(
 
         if (n >= 0)
         {
+            if(n > MAXSOCKBUFSIZE)
+            {
+                LOGD2((ZT("Sock_WriteV - failed: To large %d bytes written"), n));
+                return MI_RESULT_FAILED;
+            }
+            
             *sizeWritten = n;
             return MI_RESULT_OK;
         }
@@ -728,12 +765,12 @@ MI_Result Sock_CreateIPConnector(
     if (len >= sizeof host)
         return MI_RESULT_INVALID_PARAMETER;
     port = (unsigned short)atol(posColon + 1);
-	memcpy(host, hostAndPort, len);
+    memcpy(host, hostAndPort, len);
     host[len] = '\0';
 
     /* This code tries to connect using the primary addressing family */
-		/* (IPv4 or IPv6). If that fails and Addr_Init has a secondary */
-		/* addressing family, it tries using the secondary family next. */
+        /* (IPv4 or IPv6). If that fails and Addr_Init has a secondary */
+        /* addressing family, it tries using the secondary family next. */
 
     /* Initialize primary family address. */
     r = Addr_Init(&addr, host, port, MI_FALSE);
